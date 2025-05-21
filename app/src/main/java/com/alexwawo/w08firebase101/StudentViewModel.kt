@@ -3,6 +3,7 @@ package com.alexwawo.w08firebase101
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,6 +19,9 @@ class StudentViewModel : ViewModel() {
     init {
         fetchStudents()
     }
+
+    @Composable
+
 
     fun addStudent(student: Student) {
         val studentMap = hashMapOf(
@@ -70,6 +74,8 @@ class StudentViewModel : ViewModel() {
                 Log.w("Firestore", "Error deleting document", e)
             }
     }
+
+    fun StudentRegistrationScreen
 
 
     private fun fetchStudents() {
