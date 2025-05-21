@@ -3,7 +3,6 @@ package com.alexwawo.w08firebase101
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,81 +19,111 @@ class StudentViewModel : ViewModel() {
         fetchStudents()
     }
 
-    @Composable
+    fun deleteStudent(student: Student) {
+        db.collection("students").document(student.docId)
+            .delete()
+            .addOnSuccessListener {
+                Log.d("Firestore", "Student deleted")
+                fetchStudents()
+            }
+            .addOnFailureListener {
+                Log.e("Firestore", "Error deleting student", it)
+            }
+    }
+    fun updateStudent(student: Student) {
+        val studentMap = mapOf(
+            "id" to student.id,
+            "name" to student.name,
+            "program" to student.program
+        )
+        val studentDocRef = db.collection("students").document(student.docId)
+        studentDocRef.set(studentMap)
+            .addOnSuccessListener {
+                val phonesRef = studentDocRef.collection("phones")
+                // Step 1: Delete old phones
+                phonesRef.get().addOnSuccessListener { snapshot ->
+                    val deleteTasks = snapshot.documents.map {
+                        it.reference.delete() }
+                    // Step 2: When all phones deleted, add new phones
+
+                    com.google.android.gms.tasks.Tasks.whenAllComplete(deleteTasks)
+                        .addOnSuccessListener {
+                            val addPhoneTasks = student.phones.map { phone ->
+                                val phoneMap = mapOf("number" to phone)
+                                phonesRef.add(phoneMap)
+                            }
+                            // Step 3: After all new phones added, fetch
+                            // updated list
+
+                                    com.google.android.gms.tasks.Tasks.whenAllComplete(addPhoneTasks)
+                                        .addOnSuccessListener {
+                                            fetchStudents()
+                                        }
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.w("Firestore", "Error updating student", e)
+            }
+    }
 
 
     fun addStudent(student: Student) {
         val studentMap = hashMapOf(
             "id" to student.id,
             "name" to student.name,
-            "program" to student.program,
-            "phones" to student.phones
+            "program" to student.program
         )
 
         db.collection("students")
             .add(studentMap)
-            .addOnSuccessListener {
-                Log.d("Firestore", "DocumentSnapshot added with ID: ${it.id}")
+            .addOnSuccessListener { documentRef ->
+                Log.d("Firestore", "Student added with ID: ${documentRef.id}")
+
+                // Add phones as subcollection
+                for (phone in student.phones) {
+                    val phoneMap = hashMapOf("number" to phone)
+                    documentRef.collection("phones")
+                        .add(phoneMap)
+                        .addOnSuccessListener {
+                            Log.d("Firestore", "Phone added: $phone")
+                        }
+                        .addOnFailureListener {
+                            Log.e("Firestore", "Failed to add phone: $phone", it)
+                        }
+                }
+
                 fetchStudents()
             }
             .addOnFailureListener { e ->
-                Log.w("Firestore", "Error adding document", e)
+                Log.w("Firestore", "Error adding student", e)
             }
     }
-
-    fun updateStudent(student: Student){
-        val updateData = hashMapOf(
-            "id" to student.id,
-            "name" to student.name,
-            "program" to student.program,
-            "phones" to student.phones
-        )
-
-        db.collection("students")
-            .document(student.docId)
-            .set(updateData)
-            .addOnSuccessListener {
-                Log.d("Firestore", "DocumentSnapshot updated with ID: ${student.docId}")
-                    fetchStudents()
-            }
-            .addOnFailureListener{e ->
-                Log.w("Firestore", "Error updating document", e)
-            }
-    }
-
-    fun deleteStudent(student: Student) {
-        db.collection("students")
-            .document(student.docId)
-            .delete()
-            .addOnSuccessListener {
-                Log.d("Firestore", "DocumentSnapshot deleted with ID: ${student.docId}")
-                fetchStudents()
-            }
-            .addOnFailureListener { e ->
-                Log.w("Firestore", "Error deleting document", e)
-            }
-    }
-
-    fun StudentRegistrationScreen
-
 
     private fun fetchStudents() {
         db.collection("students")
             .get()
             .addOnSuccessListener { result ->
-                val list = mutableListOf<Student>()
-                for (document in result) {
-                    val id = document.getString("id") ?: ""
-                    val name = document.getString("name") ?: ""
-                    val program = document.getString("program") ?: ""
-                    val phones = document.get("phones") as? List<String> ?: emptyList()
-                    list.add(Student(id, name, program, phones))
+                val tempList = mutableListOf<Student>()
+
+                for (doc in result) {
+                    val studentId = doc.id
+                    val id = doc.getString("id") ?: ""
+                    val name = doc.getString("name") ?: ""
+                    val program = doc.getString("program") ?: ""
+
+                    // Fetch phones for each student
+                    doc.reference.collection("phones")
+                        .get()
+                        .addOnSuccessListener { phoneResults ->
+                            val phones = phoneResults.mapNotNull { it.getString("number") }
+                            tempList.add(Student(id, name, program, phones))
+                            students = tempList.sortedBy { it.name } // refresh list
+                        }
                 }
-                students = list
             }
-            .addOnFailureListener { exception ->
-                Log.w("Firestore", "Error getting documents.", exception)
+            .addOnFailureListener { e ->
+                Log.w("Firestore", "Error fetching students", e)
             }
     }
 }
-
